@@ -447,7 +447,7 @@
         Swaps all tokens → <b>USDC</b><br>via Aerodrome Router.<br>
         Deposits idle USDC → <b>Morpho Gauntlet</b><br>for extra yield between epochs.<br>
         Withdraws USDC+yield at epoch end.<br>
-        Calls <b>notifyRewardAmount()</b><br>on StakeManager.
+        Calls <b>notifyRewardAmount()</b><br>on Staker.
       </div>
     </div>
 
@@ -485,7 +485,7 @@
 
     <div class="block contract" id="stakemgr" style="left:462px; top:644px;">
       <div class="tag t-c">Contract</div>
-      <div class="block-name">StakeManager</div>
+      <div class="block-name">Staker</div>
       <div class="block-desc">
         Users stake <b>LAero</b> tokens.<br>
         Reward accrued <b>per-second</b>:<br>
@@ -916,15 +916,15 @@
     // 12. RewardManager → Aerodrome  (claim fees+bribes, Router swap)
     conn(rm.r, rm.cy + 8,  ae.l, ae.t + ae.h*0.75,  EX, null, 'c12');
 
-    // 13. RewardManager → StakeManager  (notifyRewardAmount — start USDC drip)
+    // 13. RewardManager → Staker  (notifyRewardAmount — start USDC drip)
     conn(rm.r, rm.cy,  sm.l, sm.cy,  C, null, 'c13');
 
-    // 15. User → StakeManager  (stake LAero / claim USDC)
-    // long curve down the left side, into StakeManager from left
+    // 15. User → Staker  (stake LAero / claim USDC)
+    // long curve down the left side, into Staker from left
     mkpath(u.cx, u.b,       sm.l, sm.cy,
            u.cx, sm.cy,     sm.l - 55, sm.cy,  AC, '4 5', 'c15');
 
-    // 16. LAeroToken → StakeManager  (LAero is the token being staked)
+    // 16. LAeroToken → Staker  (LAero is the token being staked)
     // route along right edge of col C to avoid overlapping middle blocks
     mkpath(la.cx, la.b,        sm.cx, sm.t,
            la.r+50, la.b+40,   la.r+50, sm.t-40,  C, '5 4', 'c16');
