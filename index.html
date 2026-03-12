@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LiquidAero — Architecture</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Inter', sans-serif;
+      color: #e0e0e0;
+    }
+
+    /* ── Header ─────────────────────────────── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px; height: 56px;
+      border-bottom: 1px solid rgba(0,0,0,0.18);
+      flex-shrink: 0; position: relative; z-index: 200;
+      background: rgba(30,30,36,0.97);
+    }
+    .hd-title h1 { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+    .hd-title h1 span { color: #7b9cff; }
+    .hd-title p  { font-size: 10px; color: #666; margin-top: 2px; }
+    .legend { display: flex; gap: 16px; flex-wrap: wrap; }
+    .leg { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #888; }
+    .leg-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+    /* ── Canvas ─────────────────────────────── */
+    .canvas {
+      position: relative; width: 100%;
+      height: calc(100vh - 56px);
+      overflow: hidden; cursor: grab;
+      user-select: none;
+      background: linear-gradient(to bottom, #111114 0%, #2a2a2e 100%);
+    }
+    /* dot grid */
+    .canvas::before {
+      content: ''; position: absolute; inset: 0;
+      background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+      background-size: 26px 26px;
+      pointer-events: none; z-index: 0;
+    }
+    .canvas.panning { cursor: grabbing; }
+
+    /* ── World ──────────────────────────────── */
+    #world {
+      position: absolute;
+      width: 1060px; height: 780px;
+      transform-origin: 0 0; z-index: 1;
+    }
+    #lines {
+      position: absolute; top: 0; left: 0;
+      width: 1060px; height: 780px;
+      z-index: 1; overflow: visible;
+    }
+    #lines path { pointer-events: none; }
+    #lines path.custom-conn { pointer-events: stroke; cursor: pointer; }
+
+    /* ── Blocks ─────────────────────────────── */
+    .block {
+      position: absolute; width: 180px;
+      border-radius: 10px; padding: 11px 13px;
+      border: 1px solid rgba(0,0,0,0.25);
+      background: rgba(18,18,26,0.96);
+      z-index: 2; cursor: grab;
+      user-select: none; overflow: hidden;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+    }
+    .block:hover {
+      border-color: rgba(255,255,255,0.18);
+      box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+    }
+    .block.dragging-block {
+      cursor: grabbing; z-index: 20;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    }
+    .block.resizing-block { z-index: 20; cursor: nwse-resize; }
+
+    /* resize handle — bottom-right corner */
+    .resize-handle {
+      position: absolute; bottom: 0; right: 0;
+      width: 16px; height: 16px;
+      cursor: nwse-resize;
+      border-bottom: 2px solid rgba(255,255,255,0.12);
+      border-right:  2px solid rgba(255,255,255,0.12);
+      border-radius: 0 0 9px 0;
+      transition: border-color 0.15s;
+    }
+    .block:hover .resize-handle {
+      border-color: rgba(255,255,255,0.4);
+    }
+
+    /* editing mode */
+    .block.editing {
+      border-color: rgba(255,255,255,0.45) !important;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.08), 0 8px 28px rgba(0,0,0,0.5);
+      cursor: text;
+    }
+    [contenteditable="true"] {
+      outline: none;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.05);
+      padding: 1px 3px;
+      margin: -1px -3px;
+      min-height: 1em;
+      cursor: text;
+      white-space: pre-wrap;
+    }
+    [contenteditable="true"]:focus {
+      background: rgba(255,255,255,0.08);
+    }
+
+    .block.contract  { border-color: rgba(90,120,240,0.3);  background: rgba(10,12,28,0.97); }
+    .block.py-block  { border-color: rgba(50,170,90,0.28);  background: rgba(6,16,10,0.97);  }
+    .block.ext-block { border-color: rgba(200,130,45,0.32); background: rgba(18,12,4,0.97); width:210px; }
+    .block.actor     { border-color: rgba(150,80,230,0.28); background: rgba(12,6,20,0.97);  }
+    .block.wallet    { border-color: rgba(200,165,35,0.28); background: rgba(14,12,4,0.97);  }
+
+    .block.contract:hover  { border-color: rgba(90,120,240,0.65); }
+    .block.py-block:hover  { border-color: rgba(50,170,90,0.65);  }
+    .block.ext-block:hover { border-color: rgba(200,130,45,0.75); box-shadow:0 0 30px rgba(200,130,45,0.12); }
+    .block.actor:hover     { border-color: rgba(150,80,230,0.65); }
+    .block.wallet:hover    { border-color: rgba(200,165,35,0.65); }
+
+    .tag {
+      display: inline-block; font-size: 8px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.8px;
+      padding: 2px 6px; border-radius: 3px; margin-bottom: 5px;
+    }
+    .t-c  { background: rgba(90,120,240,0.15);  color: #6e96ff; }
+    .t-py { background: rgba(50,170,90,0.15);   color: #3db46e; }
+    .t-ex { background: rgba(200,130,45,0.15);  color: #e09040; }
+    .t-ac { background: rgba(150,80,230,0.15);  color: #a060f0; }
+    .t-wa { background: rgba(200,165,35,0.15);  color: #dcb428; }
+
+    .block-name {
+      font-size: 11px; font-weight: 600; color: #fff;
+      margin-bottom: 4px;
+      font-family: 'JetBrains Mono', monospace; letter-spacing: -0.2px;
+    }
+    .block-desc { font-size: 9px; color: #999; line-height: 1.55; }
+    .block-desc b { color: #ddd; font-weight: 500; }
+
+    /* ── Controls ───────────────────────────── */
+    .controls {
+      position: absolute; bottom: 20px; right: 20px;
+      z-index: 100; display: flex; flex-direction: column; gap: 5px;
+    }
+    /* saved toast */
+    .toast {
+      position: absolute; bottom: 20px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(50,180,100,0.18);
+      border: 1px solid rgba(50,180,100,0.4);
+      color: #3db46e; font-size: 10px;
+      padding: 5px 14px; border-radius: 6px;
+      z-index: 200; pointer-events: none;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .toast.show { opacity: 1; }
+
+    /* ── Connect mode ─────────────────────────── */
+    .cbtn.active { background: rgba(90,130,255,0.18); color: #7b9cff; border-color: rgba(90,130,255,0.4); }
+    .canvas.connect-mode .block { cursor: crosshair !important; }
+    .block.connect-source {
+      box-shadow: 0 0 0 2px rgba(90,130,255,0.65), 0 6px 24px rgba(0,0,0,0.5) !important;
+      border-color: rgba(90,130,255,0.8) !important;
+    }
+    .connect-tip {
+      position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+      background: rgba(90,130,255,0.13); border: 1px solid rgba(90,130,255,0.35);
+      color: #7b9cff; font-size: 10px; padding: 5px 14px;
+      border-radius: 6px; z-index: 200; pointer-events: none;
+      opacity: 0; transition: opacity 0.2s; white-space: nowrap;
+    }
+    .connect-tip.show { opacity: 1; }
+
+    /* ── Add Block panel ──────────────────────── */
+    .add-panel {
+      position: absolute; bottom: 240px; right: 20px;
+      width: 210px; z-index: 150;
+      background: rgba(20,20,28,0.98); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px; padding: 16px; display: none;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.65);
+    }
+    .add-panel.open { display: block; }
+    .add-panel h3  { font-size: 11px; font-weight: 600; color: #fff; margin-bottom: 10px; }
+    .ap-label { font-size: 9px; color: #666; display: block; margin: 8px 0 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .add-panel input, .add-panel textarea {
+      width: 100%; background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;
+      color: #ddd; font-size: 10px; font-family: 'Inter', sans-serif;
+      padding: 5px 8px; outline: none; resize: vertical; display: block;
+    }
+    .add-panel textarea { min-height: 48px; }
+    .add-panel input:focus, .add-panel textarea:focus { border-color: rgba(90,130,255,0.45); }
+    .type-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+    .type-btn {
+      padding: 3px 7px; border-radius: 4px; font-size: 9px; font-weight: 600;
+      letter-spacing: 0.4px; text-transform: uppercase; cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04);
+      color: #777; transition: all 0.13s;
+    }
+    .type-btn:hover { color: #bbb; border-color: rgba(255,255,255,0.2); }
+    .type-btn[data-t="contract"].selected  { background: rgba(90,120,240,0.18); border-color: rgba(90,120,240,0.5); color: #6e96ff; }
+    .type-btn[data-t="py-block"].selected  { background: rgba(50,170,90,0.18);  border-color: rgba(50,170,90,0.5);  color: #3db46e; }
+    .type-btn[data-t="ext-block"].selected { background: rgba(200,130,45,0.18); border-color: rgba(200,130,45,0.5); color: #e09040; }
+    .type-btn[data-t="actor"].selected     { background: rgba(150,80,230,0.18); border-color: rgba(150,80,230,0.5); color: #a060f0; }
+    .type-btn[data-t="wallet"].selected    { background: rgba(200,165,35,0.18); border-color: rgba(200,165,35,0.5); color: #dcb428; }
+    .ap-btns { display: flex; gap: 8px; margin-top: 12px; }
+    .ap-btns button { flex:1; padding:6px 0; border-radius:6px; font-size:10px; cursor:pointer; border:1px solid; }
+    #apCancel { background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.1); color:#888; }
+    #apAdd    { background:rgba(90,130,255,0.15);  border-color:rgba(90,130,255,0.4);  color:#7b9cff; font-weight:600; }
+
+    /* ── Block context menu ──────────────────── */
+    .block-menu {
+      position: absolute; z-index: 500;
+      background: rgba(20,20,28,0.97); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 7px; padding: 4px 0; display: none;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6); min-width: 140px;
+    }
+    .block-menu.show { display: block; }
+    .bm-item {
+      padding: 6px 12px; font-size: 10px; color: #ccc;
+      cursor: pointer; display: flex; align-items: center; gap: 7px;
+      transition: background 0.1s; border-radius: 4px; margin: 1px 3px;
+    }
+    .bm-item:hover { background: rgba(255,255,255,0.07); }
+    .bm-item.danger { color: #e06050; }
+    .bm-item.danger:hover { background: rgba(220,80,60,0.14); }
+
+    .cbtn {
+      width: 32px; height: 32px;
+      background: rgba(20,20,28,0.92);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 7px; color: #aaa; font-size: 17px;
+      cursor: pointer; display: flex; align-items: center;
+      justify-content: center; line-height: 1;
+      transition: background 0.13s, color 0.13s;
+      position: relative;
+    }
+    .cbtn:hover { background: rgba(45,45,60,0.97); color: #fff; }
+    .cbtn.sm    { font-size: 10px; }
+    .cbtn::before {
+      content: attr(data-tip);
+      position: absolute; right: 38px; top: 50%; transform: translateY(-50%);
+      background: rgba(18,18,26,0.96); border: 1px solid rgba(255,255,255,0.13);
+      color: #ccc; font-size: 10px; font-family: 'Inter', sans-serif;
+      padding: 4px 9px; border-radius: 5px;
+      white-space: nowrap; pointer-events: none;
+      opacity: 0; transition: opacity 0.15s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    .cbtn:hover::before { opacity: 1; }
+
+    .hint {
+      position: absolute; bottom: 12px; left: 50%;
+      transform: translateX(-50%); font-size: 9px;
+      color: rgba(0,0,0,0.25); z-index: 100;
+      pointer-events: none; letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    /* ── Bg color picker button ──────────────── */
+    .cbtn.bg-picker-wrap { padding: 0; overflow: hidden; }
+    .cbtn.bg-picker-wrap input[type="color"] {
+      width: 100%; height: 100%; opacity: 0; cursor: pointer;
+      border: none; padding: 0; margin: 0;
+      position: absolute; inset: 0;
+    }
+    .cbtn.bg-picker-wrap svg { pointer-events: none; position: relative; }
+
+    /* ── Light theme ─────────────────────────── */
+    body.light { background: #e8e8ee; }
+
+    body.light header {
+      background: rgba(248,248,252,0.97);
+      border-bottom-color: rgba(0,0,0,0.09);
+    }
+    body.light .hd-title h1 { color: #111; }
+    body.light .hd-title p  { color: #999; }
+    body.light .leg          { color: #666; }
+
+    body.light .canvas {
+      background: linear-gradient(to bottom, #ebebf0 0%, #dddde4 100%);
+    }
+    body.light .canvas::before {
+      background-image: radial-gradient(circle, rgba(0,0,0,0.07) 1px, transparent 1px);
+    }
+
+    body.light .block {
+      background: rgba(255,255,255,0.96);
+      border-color: rgba(0,0,0,0.11);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    body.light .block:hover {
+      border-color: rgba(0,0,0,0.22);
+      box-shadow: 0 6px 22px rgba(0,0,0,0.15);
+    }
+    body.light .block.contract  { border-color: rgba(90,120,240,0.38);  background: rgba(245,247,255,0.98); }
+    body.light .block.py-block  { border-color: rgba(50,170,90,0.32);   background: rgba(244,253,246,0.98); }
+    body.light .block.ext-block { border-color: rgba(200,130,45,0.38);  background: rgba(255,249,240,0.98); }
+    body.light .block.actor     { border-color: rgba(150,80,230,0.32);  background: rgba(249,245,255,0.98); }
+    body.light .block.wallet    { border-color: rgba(200,165,35,0.32);  background: rgba(255,253,238,0.98); }
+    body.light .block.contract:hover  { border-color: rgba(90,120,240,0.65); }
+    body.light .block.py-block:hover  { border-color: rgba(50,170,90,0.65);  }
+    body.light .block.ext-block:hover { border-color: rgba(200,130,45,0.75); box-shadow:0 0 28px rgba(200,130,45,0.1); }
+    body.light .block.actor:hover     { border-color: rgba(150,80,230,0.65); }
+    body.light .block.wallet:hover    { border-color: rgba(200,165,35,0.65); }
+
+    body.light .block-name { color: #111; }
+    body.light .block-desc { color: #555; }
+    body.light .block-desc b { color: #222; }
+
+    body.light .resize-handle { border-color: rgba(0,0,0,0.12); }
+    body.light .block:hover .resize-handle { border-color: rgba(0,0,0,0.32); }
+
+    body.light [contenteditable="true"] { background: rgba(0,0,0,0.04); }
+    body.light [contenteditable="true"]:focus { background: rgba(0,0,0,0.07); }
+
+    body.light .cbtn {
+      background: rgba(245,245,250,0.95);
+      border-color: rgba(0,0,0,0.13);
+      color: #555;
+    }
+    body.light .cbtn:hover { background: rgba(228,228,238,0.97); color: #111; }
+    body.light .cbtn.active { background: rgba(90,130,255,0.14); color: #4a6ee0; border-color: rgba(90,130,255,0.38); }
+    body.light .cbtn::before {
+      background: rgba(248,248,252,0.98);
+      border-color: rgba(0,0,0,0.11);
+      color: #444;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    }
+
+    body.light .block-menu {
+      background: rgba(248,248,252,0.98);
+      border-color: rgba(0,0,0,0.1);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    body.light .bm-item { color: #333; }
+    body.light .bm-item:hover { background: rgba(0,0,0,0.05); }
+    body.light .bm-item.danger { color: #c03020; }
+    body.light .bm-item.danger:hover { background: rgba(200,60,40,0.08); }
+
+    body.light .add-panel {
+      background: rgba(248,248,252,0.98);
+      border-color: rgba(0,0,0,0.1);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    body.light .add-panel h3 { color: #111; }
+    body.light .ap-label { color: #888; }
+    body.light .add-panel input, body.light .add-panel textarea {
+      background: rgba(0,0,0,0.03);
+      border-color: rgba(0,0,0,0.1);
+      color: #222;
+    }
+    body.light .type-btn {
+      border-color: rgba(0,0,0,0.08);
+      background: rgba(0,0,0,0.03);
+      color: #666;
+    }
+    body.light .type-btn:hover { color: #333; border-color: rgba(0,0,0,0.2); }
+    body.light #apCancel { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.1); color: #666; }
+
+    body.light .hint { color: rgba(0,0,0,0.18); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="hd-title">
+    <h1>Liquid<span>Aero</span> Protocol</h1>
+    <p>Smart Contract Architecture · Base Network · Aerodrome Finance</p>
+  </div>
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:#6e96ff99"></div>Smart Contract</div>
+    <div class="leg"><div class="leg-dot" style="background:#3db46e99"></div>Python / VPS</div>
+    <div class="leg"><div class="leg-dot" style="background:#e0904099"></div>External Protocol</div>
+    <div class="leg"><div class="leg-dot" style="background:#a060f099"></div>User</div>
+    <div class="leg"><div class="leg-dot" style="background:#dcb42899"></div>Hot Wallet</div>
+  </div>
+</header>
+
+<div class="canvas" id="canvas">
+  <div id="world">
+    <svg id="lines"></svg>
+
+    <!-- ══ COL A — Actors (x=40) ══════════════════════════════ -->
+
+    <div class="block actor" id="user" style="left:40px; top:72px;">
+      <div class="tag t-ac">Actor</div>
+      <div class="block-name">User</div>
+      <div class="block-desc">
+        Deposits <b>AERO</b> → receives <b>LAero 1:1</b>.<br>
+        Browses veAERO NFTs held by protocol,<br>picks specific <b>tokenId</b>, deposits LAero 1:1<br>→ LAero <b>burned</b>, receives chosen NFT.<br>
+        Stakes LAero → earns <b>USDC rewards</b>.
+      </div>
+    </div>
+
+    <div class="block wallet" id="vaultwallet" style="left:40px; top:348px;">
+      <div class="tag t-wa">Hot Wallet · VPS</div>
+      <div class="block-name">VaultWallet</div>
+      <div class="block-desc">
+        Operator wallet on VPS.<br>
+        Holds <b>small ETH for gas</b> only.<br>
+        Cannot access user funds.<br>
+        Signs txs for AutoVoter<br>&amp; RewardManager.
+      </div>
+    </div>
+
+    <!-- ══ COL B — Main contract chain (x=252) ════════════════ -->
+
+    <div class="block contract" id="vault" style="left:252px; top:32px;">
+      <div class="tag t-c">Contract</div>
+      <div class="block-name">LiquidAeroVault</div>
+      <div class="block-desc">
+        Main entry point.<br>
+        <b>deposit(AERO)</b> → mints LAero 1:1.<br>
+        <b>withdraw(tokenId, LAero)</b> → user picks a specific <b>veAERO NFT</b>, deposits LAero 1:1, protocol <b>burns LAero</b> and transfers chosen NFT.
+      </div>
+    </div>
+
+    <div class="block contract" id="vemanager" style="left:252px; top:196px;">
+      <div class="tag t-c">Contract</div>
+      <div class="block-name">VeAeroManager</div>
+      <div class="block-desc">
+        Locks AERO via Aerodrome<br><b>VotingEscrow</b> (permanent lock).<br>
+        Holds &amp; manages all <b>veAERO NFTs</b>.<br>
+        Exposes NFT list so user can <b>select specific tokenId</b> to withdraw.
+      </div>
+    </div>
+
+    <div class="block contract" id="autovoter" style="left:252px; top:348px;">
+      <div class="tag t-c">Contract</div>
+      <div class="block-name">AutoVoter</div>
+      <div class="block-desc">
+        Calls Aerodrome <b>Voter.vote()</b><br>each epoch.<br>
+        Only <b>VaultWallet</b> or owner<br>can trigger votes.
+      </div>
+    </div>
+
+    <div class="block contract" id="rewardmgr" style="left:252px; top:500px;">
+      <div class="tag t-c">Contract</div>
+      <div class="block-name">RewardManager</div>
+      <div class="block-desc">
+        Claims <b>fees + bribes</b> from Aerodrome.<br>
+        Swaps all tokens → <b>USDC</b><br>via Aerodrome Router.<br>
+        Sends USDC to <b>LVault</b>.
+      </div>
+    </div>
+
+    <div class="block contract" id="lvault" style="left:252px; top:644px;">
+      <div class="tag t-c">Contract</div>
+      <div class="block-name">LVault</div>
+      <div class="block-desc">
+        Receives weekly <b>USDC</b> from RewardManager.<br>
+        Deposits USDC → <b>Morpho Gauntlet</b><br>USDC Prime vault for extra yield.<br>
+        Withdraws USDC+yield at epoch end.<br>
+        Calls <b>notifyRewardAmount()</b><br>on StakeManager.
+      </div>
+    </div>
+
+    <!-- ══ COL C — Supporting (x=462) ════════════════════════ -->
+
+    <div class="block contract" id="laero" style="left:462px; top:32px;">
+      <div class="tag t-c">Contract</div>
+      <div class="block-name">LAeroToken</div>
+      <div class="block-desc">
+        Standard <b>ERC20</b>.<br>
+        Mint / burn rights held<br><b>exclusively</b> by LiquidAeroVault.<br>
+        Represents 1:1 deposited AERO.
+      </div>
+    </div>
+
+    <div class="block py-block" id="voteropt" style="left:462px; top:348px;">
+      <div class="tag t-py">Python · VPS</div>
+      <div class="block-name">VoterOptimizer</div>
+      <div class="block-desc">
+        Reads on-chain <b>bribe APRs</b><br>&amp; gauge data.<br>
+        Computes <b>optimal pool weights</b>.<br>
+        Sends strategy via VaultWallet.
+      </div>
+    </div>
+
+    <div class="block py-block" id="claimopt" style="left:462px; top:500px;">
+      <div class="tag t-py">Python · VPS</div>
+      <div class="block-name">ClaimOptimizer</div>
+      <div class="block-desc">
+        Runs after each epoch flip.<br>
+        Calls <b>RewardManager</b><br>.claimAndSwap() via VaultWallet.<br>
+        Retries on tx failure.
+      </div>
+    </div>
+
+    <div class="block contract" id="stakemgr" style="left:462px; top:644px;">
+      <div class="tag t-c">Contract</div>
+      <div class="block-name">StakeManager</div>
+      <div class="block-desc">
+        Users stake <b>LAero</b> tokens.<br>
+        Reward accrued <b>per-second</b>:<br>
+        <code style="font-size:8px;color:#aaa">reward = staked × time × rate</code><br>
+        User claims <b>USDC</b> anytime.
+      </div>
+    </div>
+
+    <!-- ══ COL D — External (x=760) ══════════════════════════ -->
+
+    <div class="block ext-block" id="aerodrome" style="left:760px; top:200px;">
+      <div class="tag t-ex">External Protocol</div>
+      <div class="block-name">Aerodrome Finance</div>
+      <div class="block-desc">
+        <b>VotingEscrow</b> — lock AERO, get veNFT<br>
+        <b>Voter</b> — vote on gauge weights<br>
+        <b>Router</b> — swap tokens → USDC<br>
+        <b>RewardsDistributor</b> — claim rewards
+      </div>
+    </div>
+
+    <div class="block ext-block" id="morpho" style="left:760px; top:490px;">
+      <div class="tag t-ex">External Protocol</div>
+      <div class="block-name">Morpho Gauntlet USDC Prime</div>
+      <div class="block-desc">
+        Permissionless lending vault on <b>Base</b>.<br>
+        LVault deposits idle <b>USDC</b> here<br>between epochs to earn extra yield.<br>
+        Returns <b>USDC + lending APY</b><br>when LVault withdraws for distribution.
+      </div>
+    </div>
+
+  </div><!-- /world -->
+
+  <div class="controls">
+    <button class="cbtn"    id="zoomIn"    title="Zoom in"       data-tip="Zoom in">+</button>
+    <button class="cbtn"    id="zoomOut"   title="Zoom out"      data-tip="Zoom out">−</button>
+    <button class="cbtn sm" id="zoomReset" title="Fit to screen" data-tip="Fit to screen">⊙</button>
+    <button class="cbtn sm" id="saveBtn" title="Save layout" data-tip="Save layout">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1.5" y="1.5" width="11" height="11" rx="2"/>
+        <rect x="4"   y="1.5" width="5"  height="3.5" rx="0.5" fill="currentColor" stroke="none"/>
+        <rect x="3"   y="7.5" width="8"  height="4"   rx="1"/>
+      </svg>
+    </button>
+    <button class="cbtn sm" id="resetBtn" title="Reset to defaults" data-tip="Reset to defaults">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 7a5 5 0 1 0 1.5-3.5"/>
+        <polyline points="2,3 2,7 6,7"/>
+      </svg>
+    </button>
+    <button class="cbtn sm" id="connectBtn" title="Connect blocks — click source then target · ESC to cancel" data-tip="Connect blocks">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <circle cx="3" cy="7" r="1.8" fill="currentColor" stroke="none"/>
+        <circle cx="11" cy="7" r="1.8" fill="currentColor" stroke="none"/>
+        <path d="M4.8 7 C6 4.5 8 4.5 9.2 7"/>
+      </svg>
+    </button>
+    <button class="cbtn sm" id="addBlockBtn" title="Add new block" data-tip="Add new block">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1.5" y="3" width="11" height="8" rx="1.5"/>
+        <line x1="7" y1="5.5" x2="7" y2="8.5"/>
+        <line x1="5.5" y1="7" x2="8.5" y2="7"/>
+      </svg>
+    </button>
+    <button class="cbtn sm" id="themeBtn" title="Toggle light / dark theme" data-tip="Toggle theme">
+      <svg id="themeIcon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="7" cy="7" r="2.6"/>
+        <line x1="7" y1="1"  x2="7" y2="2.5"/>
+        <line x1="7" y1="11.5" x2="7" y2="13"/>
+        <line x1="1"  y1="7" x2="2.5" y2="7"/>
+        <line x1="11.5" y1="7" x2="13" y2="7"/>
+        <line x1="2.9" y1="2.9" x2="3.95" y2="3.95"/>
+        <line x1="10.05" y1="10.05" x2="11.1" y2="11.1"/>
+        <line x1="11.1" y1="2.9" x2="10.05" y2="3.95"/>
+        <line x1="3.95" y1="10.05" x2="2.9" y2="11.1"/>
+      </svg>
+    </button>
+    <button class="cbtn sm bg-picker-wrap" id="bgPickerBtn" title="Custom background color" data-tip="Background color">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="4"  cy="4"  r="1.5" fill="rgba(220,80,80,0.8)"  stroke="none"/>
+        <circle cx="10" cy="4"  r="1.5" fill="rgba(80,160,220,0.8)" stroke="none"/>
+        <circle cx="4"  cy="10" r="1.5" fill="rgba(80,200,100,0.8)" stroke="none"/>
+        <circle cx="10" cy="10" r="1.5" fill="rgba(220,190,60,0.8)" stroke="none"/>
+        <path d="M4 4 Q7 7 10 4" stroke-opacity="0.4"/>
+        <path d="M4 10 Q7 7 10 10" stroke-opacity="0.4"/>
+      </svg>
+      <input type="color" id="bgPicker" value="#111114" title="Pick background color">
+    </button>
+  </div>
+  <div class="toast" id="toast">Layout saved</div>
+
+  <!-- confirm reset dialog -->
+  <div id="resetOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,0.6); z-index:300; align-items:center; justify-content:center;">
+    <div style="background:#1a1a22; border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:24px 28px; text-align:center; min-width:260px;">
+      <div style="font-size:13px; font-weight:600; color:#fff; margin-bottom:8px;">Reset layout?</div>
+      <div style="font-size:11px; color:#666; margin-bottom:20px;">All edits, positions and sizes<br>will be restored to defaults.</div>
+      <div style="display:flex; gap:10px; justify-content:center;">
+        <button id="resetCancel" style="padding:7px 18px; border-radius:7px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:#aaa; font-size:11px; cursor:pointer;">Cancel</button>
+        <button id="resetConfirm" style="padding:7px 18px; border-radius:7px; border:1px solid rgba(220,80,60,0.4); background:rgba(220,80,60,0.15); color:#e05040; font-size:11px; cursor:pointer; font-weight:600;">Reset</button>
+      </div>
+    </div>
+  </div>
+  <!-- Block / connection context menu -->
+  <div class="block-menu" id="blockMenu">
+    <div class="bm-item danger" id="bmDeleteBlock">
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="1,3 11,3"/><path d="M4 3V2h4v1"/>
+        <rect x="2" y="3" width="8" height="8" rx="1"/>
+        <line x1="5" y1="5.5" x2="5" y2="8.5"/><line x1="7" y1="5.5" x2="7" y2="8.5"/>
+      </svg>Delete block
+    </div>
+    <div class="bm-item danger" id="bmDeleteConn" style="display:none">
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <path d="M1 6 L5 6" stroke-dasharray="2 1.5"/>
+        <line x1="8" y1="4" x2="12" y2="8"/>
+        <line x1="8" y1="8" x2="12" y2="4"/>
+      </svg>Delete connection
+    </div>
+  </div>
+
+  <!-- Add Block panel -->
+  <div class="add-panel" id="addPanel">
+    <h3>Add Block</h3>
+    <span class="ap-label">Type</span>
+    <div class="type-btns">
+      <button class="type-btn selected" data-t="contract">Contract</button>
+      <button class="type-btn" data-t="py-block">Python</button>
+      <button class="type-btn" data-t="ext-block">External</button>
+      <button class="type-btn" data-t="actor">Actor</button>
+      <button class="type-btn" data-t="wallet">Wallet</button>
+    </div>
+    <span class="ap-label">Name</span>
+    <input type="text" id="apName" placeholder="BlockName" />
+    <span class="ap-label">Description (optional)</span>
+    <textarea id="apDesc" placeholder="Short description..."></textarea>
+    <div class="ap-btns">
+      <button id="apCancel">Cancel</button>
+      <button id="apAdd">Add Block</button>
+    </div>
+  </div>
+
+  <div class="connect-tip" id="connectTip">Click source block · then target block · ESC to cancel</div>
+  <div class="hint">scroll to zoom &nbsp;·&nbsp; drag to pan &nbsp;·&nbsp; drag blocks to move &nbsp;·&nbsp; double-click to edit &nbsp;·&nbsp; right-click to delete</div>
+</div>
+
+<script>
+  const canvas  = document.getElementById('canvas');
+  const world   = document.getElementById('world');
+  const svgEl   = document.getElementById('lines');
+  const WORLD_W = 1060, WORLD_H = 780;
+
+  // ── Pan / zoom state ────────────────────────────────────────
+  let scale = 1, tx = 0, ty = 0;
+  let panning = false, psx = 0, psy = 0;
+
+  // ── Interaction state ────────────────────────────────────────
+  let dragBlock    = null;
+  let dragOrigin   = { mx: 0, my: 0, bx: 0, by: 0 };
+  let resizeBlock  = null;
+  let resizeOrigin = { mx: 0, my: 0, bw: 0, bh: 0 };
+  let editingBlock = null;
+
+  function enterEdit(block) {
+    if (editingBlock) exitEdit(editingBlock);
+    editingBlock = block;
+    block.classList.add('editing');
+    block.querySelector('.block-name').contentEditable = 'true';
+    block.querySelector('.block-desc').contentEditable = 'true';
+    // focus name, cursor at end
+    const name = block.querySelector('.block-name');
+    name.focus();
+    const r = document.createRange(), s = window.getSelection();
+    r.selectNodeContents(name); r.collapse(false);
+    s.removeAllRanges(); s.addRange(r);
+  }
+
+  function exitEdit(block) {
+    if (!block) return;
+    block.querySelector('.block-name').contentEditable = 'false';
+    block.querySelector('.block-desc').contentEditable = 'false';
+    block.classList.remove('editing');
+    editingBlock = null;
+  }
+
+  // ESC exits edit / connect mode / menus
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (editingBlock) exitEdit(editingBlock);
+    if (typeof connectMode !== 'undefined' && connectMode) setConnectMode(false);
+    document.getElementById('blockMenu')?.classList.remove('show');
+  });
+
+  function apply() {
+    world.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
+  }
+
+  function zoomAt(cx, cy, factor) {
+    const ns = Math.max(0.15, Math.min(4, scale * factor));
+    tx = cx - (cx - tx) * (ns / scale);
+    ty = cy - (cy - ty) * (ns / scale);
+    scale = ns; apply();
+  }
+
+  function resetView() {
+    const cw = canvas.offsetWidth, ch = canvas.offsetHeight;
+    scale = Math.min(cw / WORLD_W, ch / WORLD_H) * 0.90;
+    tx = (cw - WORLD_W * scale) / 2;
+    ty = (ch - WORLD_H * scale) / 2;
+    apply();
+  }
+
+  // Convert screen coords → world coords
+  function toWorld(clientX, clientY) {
+    const cr = canvas.getBoundingClientRect();
+    return {
+      x: (clientX - cr.left - tx) / scale,
+      y: (clientY - cr.top  - ty) / scale,
+    };
+  }
+
+  // ── Unified mousedown: resize → drag → pan ──────────────────
+  canvas.addEventListener('mousedown', e => {
+    if (e.target.closest('.controls') || e.target.closest('.add-panel') || e.target.closest('.block-menu')) return;
+
+    const block = e.target.closest('.block');
+
+    // 0. connect mode — intercept block clicks
+    if (connectMode) {
+      if (block) { e.preventDefault(); handleConnectClick(block); }
+      return;
+    }
+
+    // exit edit mode when clicking outside editing block
+    if (editingBlock && block !== editingBlock) exitEdit(editingBlock);
+
+    // 1. resize handle
+    const handle = e.target.closest('.resize-handle');
+    if (handle) {
+      e.preventDefault();
+      const b = handle.closest('.block');
+      const wm = toWorld(e.clientX, e.clientY);
+      resizeBlock  = b;
+      resizeOrigin = { mx: wm.x, my: wm.y, bw: b.offsetWidth, bh: b.offsetHeight };
+      b.classList.add('resizing-block');
+      return;
+    }
+
+    // 2. if clicking inside editing block — let browser handle text cursor
+    if (block && block === editingBlock) return;
+
+    // 3. block drag
+    if (block) {
+      e.preventDefault();
+      const wm = toWorld(e.clientX, e.clientY);
+      dragBlock  = block;
+      dragOrigin = { mx: wm.x, my: wm.y, bx: block.offsetLeft, by: block.offsetTop };
+      block.classList.add('dragging-block');
+      return;
+    }
+
+    // 4. canvas pan
+    e.preventDefault();
+    panning = true;
+    psx = e.clientX - tx;
+    psy = e.clientY - ty;
+    canvas.classList.add('panning');
+  });
+
+  // ── Double-click → enter edit mode ──────────────────────────
+  canvas.addEventListener('dblclick', e => {
+    if (connectMode) return;
+    const block = e.target.closest('.block');
+    if (!block || e.target.closest('.resize-handle')) return;
+    enterEdit(block);
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (resizeBlock) {
+      const wm = toWorld(e.clientX, e.clientY);
+      resizeBlock.style.width  = Math.max(120, resizeOrigin.bw + (wm.x - resizeOrigin.mx)) + 'px';
+      resizeBlock.style.height = Math.max(70,  resizeOrigin.bh + (wm.y - resizeOrigin.my)) + 'px';
+      redrawLines();
+      return;
+    }
+    if (dragBlock) {
+      const wm = toWorld(e.clientX, e.clientY);
+      dragBlock.style.left = (dragOrigin.bx + wm.x - dragOrigin.mx) + 'px';
+      dragBlock.style.top  = (dragOrigin.by + wm.y - dragOrigin.my) + 'px';
+      redrawLines();
+      return;
+    }
+    if (!panning) return;
+    tx = e.clientX - psx;
+    ty = e.clientY - psy;
+    apply();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (resizeBlock) {
+      resizeBlock.classList.remove('resizing-block');
+      resizeBlock = null;
+    }
+    if (dragBlock) {
+      dragBlock.classList.remove('dragging-block');
+      dragBlock = null;
+    }
+    panning = false;
+    canvas.classList.remove('panning');
+  });
+
+  // ── Scroll zoom ─────────────────────────────────────────────
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const cr = canvas.getBoundingClientRect();
+    zoomAt(e.clientX - cr.left, e.clientY - cr.top, e.deltaY > 0 ? 0.9 : 1.11);
+  }, { passive: false });
+
+  document.getElementById('zoomIn').addEventListener('click', () =>
+    zoomAt(canvas.offsetWidth/2, canvas.offsetHeight/2, 1.25));
+  document.getElementById('zoomOut').addEventListener('click', () =>
+    zoomAt(canvas.offsetWidth/2, canvas.offsetHeight/2, 0.8));
+  document.getElementById('zoomReset').addEventListener('click', resetView);
+
+  // ── SVG line drawing ────────────────────────────────────────
+  function q(id) {
+    const el = document.getElementById(id);
+    if (!el) return { l:null, t:null, r:null, b:null, cx:null, cy:null, w:0, h:0 };
+    const l = el.offsetLeft, t = el.offsetTop;
+    const w = el.offsetWidth,  h = el.offsetHeight;
+    return { l, t, r:l+w, b:t+h, cx:l+w/2, cy:t+h/2, w, h };
+  }
+
+  function mkpath(x1,y1, x2,y2, c1x,c1y, c2x,c2y, color, dash, connId) {
+    if (x1==null||y1==null||x2==null||y2==null) return;
+    if (connId && deletedConns.includes(connId)) return;
+    const pathD = `M${x1},${y1} C${c1x},${c1y} ${c2x},${c2y} ${x2},${y2}`;
+    const el = document.createElementNS('http://www.w3.org/2000/svg','path');
+    el.setAttribute('d', pathD);
+    el.setAttribute('fill','none');
+    el.setAttribute('stroke', color);
+    el.setAttribute('stroke-width','1.5');
+    el.setAttribute('stroke-dasharray', dash || '5 4');
+    svgEl.appendChild(el);
+    if (connId) {
+      const hit = document.createElementNS('http://www.w3.org/2000/svg','path');
+      hit.setAttribute('d', pathD); hit.setAttribute('fill','none');
+      hit.setAttribute('stroke','rgba(0,0,0,0.01)'); hit.setAttribute('stroke-width','14');
+      hit.classList.add('custom-conn');
+      hit.addEventListener('contextmenu', ev => {
+        ev.preventDefault(); ev.stopPropagation();
+        menuTargetConn  = { type: 'builtin', connId };
+        menuTargetBlock = null;
+        const cr = canvas.getBoundingClientRect();
+        blockMenu.style.left = (ev.clientX - cr.left + 4) + 'px';
+        blockMenu.style.top  = (ev.clientY - cr.top  + 4) + 'px';
+        document.getElementById('bmDeleteBlock').style.display = 'none';
+        document.getElementById('bmDeleteConn').style.display  = '';
+        blockMenu.classList.add('show');
+      });
+      svgEl.appendChild(hit);
+    }
+  }
+
+  // horizontal-dominant bezier
+  function hconn(x1,y1, x2,y2, color, dash, connId) {
+    const mx = (x1+x2)/2;
+    mkpath(x1,y1, x2,y2, mx,y1, mx,y2, color, dash, connId);
+  }
+  // vertical-dominant bezier
+  function vconn(x1,y1, x2,y2, color, dash, connId) {
+    const my = (y1+y2)/2;
+    mkpath(x1,y1, x2,y2, x1,my, x2,my, color, dash, connId);
+  }
+  // auto-pick based on dominant direction
+  function conn(x1,y1, x2,y2, color, dash, connId) {
+    Math.abs(x2-x1) >= Math.abs(y2-y1)
+      ? hconn(x1,y1, x2,y2, color, dash, connId)
+      : vconn(x1,y1, x2,y2, color, dash, connId);
+  }
+
+  function drawLines() {
+    const C   = 'rgba(90,130,255,0.55)';
+    const PY  = 'rgba(50,175,95,0.55)';
+    const EX  = 'rgba(205,135,50,0.6)';
+    const AC  = 'rgba(150,85,230,0.55)';
+    const WA  = 'rgba(205,168,38,0.6)';
+    const DIM = 'rgba(90,130,255,0.2)';
+    const RD  = 'rgba(205,135,50,0.25)';
+    const MO  = 'rgba(40,185,150,0.65)';
+
+    const v  = q('vault'),    la = q('laero'),    vm = q('vemanager');
+    const av = q('autovoter'),rm = q('rewardmgr'),lv = q('lvault');
+    const sm = q('stakemgr'), vo = q('voteropt'), co = q('claimopt');
+    const ae = q('aerodrome'),u  = q('user'),     wv = q('vaultwallet');
+    const mo = q('morpho');
+
+    // 1. User → LiquidAeroVault  (deposit AERO)
+    conn(u.r, u.cy,  v.l, v.cy,  AC, null, 'c1');
+
+    // 2. LiquidAeroVault → LAeroToken  (mint / burn)
+    conn(v.r, v.cy,  la.l, la.cy,  C, null, 'c2');
+
+    // 3. LiquidAeroVault → VeAeroManager  (send AERO to lock)
+    vconn(v.cx, v.b,  vm.cx, vm.t,  C, null, 'c3');
+
+    // 4. VeAeroManager → AutoVoter  (provides veNFT for voting)
+    vconn(vm.cx, vm.b,  av.cx, av.t,  C, null, 'c4');
+
+    // 5. VeAeroManager → Aerodrome  (VotingEscrow — permanent lock)
+    conn(vm.r, vm.cy,  ae.l, ae.t + ae.h*0.22,  EX, null, 'c5');
+
+    // 6. AutoVoter ↔ VoterOptimizer  (strategy / voting config)
+    conn(av.r, av.cy,  vo.l, vo.cy,  PY, null, 'c6');
+
+    // 7. AutoVoter → Aerodrome  (Voter.vote() each epoch)
+    conn(av.r, av.cy + 10,  ae.l, ae.cy,  EX, null, 'c7');
+
+    // 8. AutoVoter → RewardManager  (epoch flow: vote → then claim)
+    vconn(av.cx, av.b,  rm.cx, rm.t,  C, null, 'c8');
+
+    // 9. VaultWallet → AutoVoter  (signs vote transaction)
+    conn(wv.r, wv.cy,  av.l, av.cy,  WA, null, 'c9');
+
+    // 10. VaultWallet → RewardManager  (signs claim transaction)
+    // elbow: right of VaultWallet, bend around to left of RewardManager
+    mkpath(wv.r, wv.cy,  rm.l, rm.cy,
+           wv.r+28, wv.cy,  wv.r+28, rm.cy,  WA, null, 'c10');
+
+    // 11. RewardManager ↔ ClaimOptimizer  (triggers claim logic)
+    conn(rm.r, rm.cy,  co.l, co.cy,  PY, null, 'c11');
+
+    // 12. RewardManager → Aerodrome  (claim fees+bribes, Router swap)
+    conn(rm.r, rm.cy + 8,  ae.l, ae.t + ae.h*0.75,  EX, null, 'c12');
+
+    // 13. RewardManager → LVault  (sends USDC)
+    vconn(rm.cx, rm.b,  lv.cx, lv.t,  C, null, 'c13');
+
+    // 14. LVault → StakeManager  (notifyRewardAmount — start USDC drip)
+    conn(lv.r, lv.cy,  sm.l, sm.cy,  C, null, 'c14');
+
+    // 15. User → StakeManager  (stake LAero / claim USDC)
+    // long curve down the left side, into StakeManager from left
+    mkpath(u.cx, u.b,       sm.l, sm.cy,
+           u.cx, sm.cy,     sm.l - 55, sm.cy,  AC, '4 5', 'c15');
+
+    // 16. LAeroToken → StakeManager  (LAero is the token being staked)
+    // route along right edge of col C to avoid overlapping middle blocks
+    mkpath(la.cx, la.b,        sm.cx, sm.t,
+           la.r+50, la.b+40,   la.r+50, sm.t-40,  C, '5 4', 'c16');
+
+    // 17. VoterOptimizer → Aerodrome  (reads gauge / bribe data — faint)
+    conn(vo.r, vo.cy,  ae.l, ae.t + ae.h*0.48,  RD, '3 6', 'c17');
+
+    // 18. ClaimOptimizer → Aerodrome  (reads reward data — faint)
+    conn(co.r, co.cy,  ae.l, ae.b - 18,  RD, '3 6', 'c18');
+
+    // 19. LVault → Morpho Gauntlet USDC Prime  (deposit idle USDC for extra yield)
+    mkpath(lv.r, lv.cy,  mo.l, mo.cy,
+           lv.r + 80, lv.cy,  mo.l - 80, mo.cy,  MO, null, 'c19');
+
+    // 20. Morpho → LVault  (withdraw USDC + lending yield at epoch end, dashed return)
+    mkpath(mo.l, mo.cy + 16,  lv.r, lv.cy + 16,
+           mo.l - 60, mo.cy + 50,  lv.r + 60, lv.cy + 50,  MO, '3 6', 'c20');
+
+    // Custom user-defined connections (right-click to delete)
+    customConns.forEach((cd, idx) => {
+      const fe = document.getElementById(cd.from);
+      const te = document.getElementById(cd.to);
+      if (!fe || !te) return;
+      const f = q(cd.from), g = q(cd.to);
+      const clr = connColorFor(fe, te);
+      const dx = Math.abs(g.cx - f.cx), dy = Math.abs(g.cy - f.cy);
+      const mx = (f.cx + g.cx) / 2, my = (f.cy + g.cy) / 2;
+      const pathD = dx >= dy
+        ? `M${f.cx},${f.cy} C${mx},${f.cy} ${mx},${g.cy} ${g.cx},${g.cy}`
+        : `M${f.cx},${f.cy} C${f.cx},${my} ${g.cx},${my} ${g.cx},${g.cy}`;
+      // wide transparent hit path for right-click delete
+      const hit = document.createElementNS('http://www.w3.org/2000/svg','path');
+      hit.setAttribute('d', pathD); hit.setAttribute('fill','none');
+      hit.setAttribute('stroke','rgba(0,0,0,0.01)'); hit.setAttribute('stroke-width','14');
+      hit.classList.add('custom-conn');
+      hit.addEventListener('contextmenu', ev => {
+        ev.preventDefault(); ev.stopPropagation();
+        menuTargetConn  = { type: 'custom', from: cd.from, to: cd.to };
+        menuTargetBlock = null;
+        const cr = canvas.getBoundingClientRect();
+        blockMenu.style.left = (ev.clientX - cr.left + 4) + 'px';
+        blockMenu.style.top  = (ev.clientY - cr.top  + 4) + 'px';
+        document.getElementById('bmDeleteBlock').style.display = 'none';
+        document.getElementById('bmDeleteConn').style.display  = '';
+        blockMenu.classList.add('show');
+      });
+      svgEl.appendChild(hit);
+      // visual line
+      const vis = document.createElementNS('http://www.w3.org/2000/svg','path');
+      vis.setAttribute('d', pathD); vis.setAttribute('fill','none');
+      vis.setAttribute('stroke', clr); vis.setAttribute('stroke-width','1.5');
+      vis.setAttribute('stroke-dasharray','5 4');
+      svgEl.appendChild(vis);
+    });
+  }
+
+  function redrawLines() {
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+    drawLines();
+  }
+
+  // ── Save / Load layout ───────────────────────────────────────
+  const STORAGE_KEY = 'liquidaero_layout';
+
+  function saveLayout() {
+    const data = {};
+    document.querySelectorAll('.block').forEach(b => {
+      data[b.id] = {
+        left:   b.style.left,
+        top:    b.style.top,
+        width:  b.style.width  || '',
+        height: b.style.height || '',
+        name:   b.querySelector('.block-name').textContent,
+        desc:   b.querySelector('.block-desc').innerHTML,
+      };
+    });
+    // persist custom blocks & connections
+    data.__customBlocks    = customBlocks.map(bd => ({ id: bd.id, type: bd.type }));
+    data.__customConns     = customConns;
+    data.__deletedBuiltins = deletedBuiltins;
+    data.__deletedConns    = deletedConns;
+    data.__lightTheme      = document.body.classList.contains('light');
+    data.__customBg        = canvas.dataset.customBg || '';
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    // show toast
+    const toast = document.getElementById('toast');
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 1800);
+  }
+
+  function loadLayout() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const data = JSON.parse(raw);
+      document.querySelectorAll('.block').forEach(b => {
+        const d = data[b.id];
+        if (!d) return;
+        if (d.left)   b.style.left   = d.left;
+        if (d.top)    b.style.top    = d.top;
+        if (d.width)  b.style.width  = d.width;
+        if (d.height) b.style.height = d.height;
+        if (d.name)   b.querySelector('.block-name').textContent = d.name;
+        if (d.desc)   b.querySelector('.block-desc').innerHTML   = d.desc;
+      });
+      // remove deleted built-in blocks
+      if (Array.isArray(data.__deletedBuiltins)) {
+        data.__deletedBuiltins.forEach(id => {
+          if (!deletedBuiltins.includes(id)) deletedBuiltins.push(id);
+          document.getElementById(id)?.remove();
+        });
+      }
+      // restore custom blocks
+      if (Array.isArray(data.__customBlocks)) {
+        data.__customBlocks.forEach(bd => {
+          if (document.getElementById(bd.id)) return;
+          const n = parseInt(bd.id.replace('custom_', '')) || 0;
+          if (n > blockCounter) blockCounter = n;
+          const d2 = data[bd.id] || {};
+          const fullBd = {
+            id: bd.id, type: bd.type,
+            name: d2.name || 'Block',
+            desc: d2.desc || '',
+            left: parseInt(d2.left) || 100,
+            top:  parseInt(d2.top)  || 100,
+          };
+          customBlocks.push(fullBd);
+          const el = createBlockEl(fullBd);
+          if (d2.width)  el.style.width  = d2.width;
+          if (d2.height) el.style.height = d2.height;
+        });
+      }
+      // restore custom connections
+      if (Array.isArray(data.__customConns))  customConns  = data.__customConns;
+      if (Array.isArray(data.__deletedConns)) deletedConns = data.__deletedConns;
+      if (data.__lightTheme) applyTheme(true);
+      if (data.__customBg)   applyBg(data.__customBg);
+    } catch(e) { /* ignore corrupt data */ }
+  }
+
+  document.getElementById('saveBtn').addEventListener('click', saveLayout);
+
+  // ── Reset layout ─────────────────────────────────────────────
+  const resetOverlay = document.getElementById('resetOverlay');
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    resetOverlay.style.display = 'flex';
+  });
+  document.getElementById('resetCancel').addEventListener('click', () => {
+    resetOverlay.style.display = 'none';
+  });
+  document.getElementById('resetConfirm').addEventListener('click', () => {
+    localStorage.removeItem(STORAGE_KEY);
+    location.reload();
+  });
+
+  // ── Custom blocks & connections ───────────────────────────────
+  const TYPE_META = {
+    contract:   { label: 'Contract',          tagClass: 't-c'  },
+    'py-block': { label: 'Python · VPS',      tagClass: 't-py' },
+    'ext-block':{ label: 'External Protocol', tagClass: 't-ex' },
+    actor:      { label: 'Actor',             tagClass: 't-ac' },
+    wallet:     { label: 'Hot Wallet · VPS',  tagClass: 't-wa' },
+  };
+  const TYPE_CLR = {
+    contract:   'rgba(90,130,255,0.55)',
+    'py-block': 'rgba(50,175,95,0.55)',
+    'ext-block':'rgba(205,135,50,0.6)',
+    actor:      'rgba(150,85,230,0.55)',
+    wallet:     'rgba(205,168,38,0.6)',
+  };
+
+  let customBlocks    = [];
+  let customConns     = [];
+  let deletedBuiltins = [];
+  let deletedConns    = [];
+  let blockCounter    = 0;
+  let connectMode     = false;
+  let connectSource   = null;
+
+  function blockTypeOf(el) {
+    return Object.keys(TYPE_META).find(t => el.classList.contains(t)) || 'contract';
+  }
+
+  function connColorFor(fromEl, toEl) {
+    const prio = ['ext-block','py-block','wallet','actor','contract'];
+    const ft = blockTypeOf(fromEl), tt = blockTypeOf(toEl);
+    return TYPE_CLR[prio.find(p => p===ft || p===tt)] || TYPE_CLR.contract;
+  }
+
+  function createBlockEl(bd) {
+    const m = TYPE_META[bd.type] || TYPE_META.contract;
+    const el = document.createElement('div');
+    el.className = `block ${bd.type}`;
+    el.id = bd.id;
+    el.style.left = bd.left + 'px';
+    el.style.top  = bd.top  + 'px';
+    el.innerHTML =
+      `<div class="tag ${m.tagClass}">${m.label}</div>` +
+      `<div class="block-name">${bd.name}</div>` +
+      `<div class="block-desc">${bd.desc || ''}</div>`;
+    const rh = document.createElement('div');
+    rh.className = 'resize-handle';
+    el.appendChild(rh);
+    world.appendChild(el);
+    return el;
+  }
+
+  // ── Add Panel ──────────────────────────────────────────────────
+  const addPanel    = document.getElementById('addPanel');
+  const addBlockBtn = document.getElementById('addBlockBtn');
+  let selectedType  = 'contract';
+
+  addBlockBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (connectMode) setConnectMode(false);
+    addPanel.classList.toggle('open');
+  });
+
+  document.querySelectorAll('.type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedType = btn.dataset.t;
+    });
+  });
+
+  document.getElementById('apCancel').addEventListener('click', () => {
+    addPanel.classList.remove('open');
+  });
+
+  document.getElementById('apAdd').addEventListener('click', () => {
+    const name = document.getElementById('apName').value.trim() || 'NewBlock';
+    const desc = document.getElementById('apDesc').value.trim();
+    blockCounter++;
+    const id = 'custom_' + blockCounter;
+    const cr = canvas.getBoundingClientRect();
+    const left = Math.round((cr.width  / 2 - tx) / scale - 90);
+    const top  = Math.round((cr.height / 2 - ty) / scale - 50);
+    const bd = { id, type: selectedType, name, desc, left, top };
+    customBlocks.push(bd);
+    createBlockEl(bd);
+    redrawLines();
+    addPanel.classList.remove('open');
+    document.getElementById('apName').value = '';
+    document.getElementById('apDesc').value = '';
+  });
+
+  // ── Connect Mode ───────────────────────────────────────────────
+  const connectBtn = document.getElementById('connectBtn');
+  const connectTip = document.getElementById('connectTip');
+
+  function setConnectMode(on) {
+    connectMode = on;
+    if (!on) clearConnectSource();
+    connectBtn.classList.toggle('active', on);
+    canvas.classList.toggle('connect-mode', on);
+    connectTip.classList.toggle('show', on);
+  }
+
+  function clearConnectSource() {
+    if (connectSource) { connectSource.classList.remove('connect-source'); connectSource = null; }
+  }
+
+  function handleConnectClick(block) {
+    if (!connectSource) {
+      connectSource = block;
+      block.classList.add('connect-source');
+    } else if (connectSource === block) {
+      clearConnectSource();
+    } else {
+      customConns.push({ from: connectSource.id, to: block.id });
+      clearConnectSource();
+      setConnectMode(false);
+      redrawLines();
+    }
+  }
+
+  connectBtn.addEventListener('click', () => setConnectMode(!connectMode));
+
+  // ── Theme toggle ───────────────────────────────────────────────
+  function applyTheme(light) {
+    document.body.classList.toggle('light', light);
+    const icon = document.getElementById('themeIcon');
+    if (light) {
+      // moon icon for switching back to dark
+      icon.innerHTML = `<path d="M11 7.5A4.5 4.5 0 0 1 6.5 3a4.5 4.5 0 1 0 4.5 4.5z" fill="currentColor" stroke="none"/>`;
+    } else {
+      // sun icon
+      icon.innerHTML = `
+        <circle cx="7" cy="7" r="2.6"/>
+        <line x1="7" y1="1"  x2="7" y2="2.5"/>
+        <line x1="7" y1="11.5" x2="7" y2="13"/>
+        <line x1="1"  y1="7" x2="2.5" y2="7"/>
+        <line x1="11.5" y1="7" x2="13" y2="7"/>
+        <line x1="2.9" y1="2.9" x2="3.95" y2="3.95"/>
+        <line x1="10.05" y1="10.05" x2="11.1" y2="11.1"/>
+        <line x1="11.1" y1="2.9" x2="10.05" y2="3.95"/>
+        <line x1="3.95" y1="10.05" x2="2.9" y2="11.1"/>`;
+    }
+    document.getElementById('themeBtn').dataset.tip = light ? 'Dark theme' : 'Light theme';
+  }
+
+  document.getElementById('themeBtn').addEventListener('click', () => {
+    applyTheme(!document.body.classList.contains('light'));
+  });
+
+  // ── Background color picker ────────────────────────────────────
+  function applyBg(color) {
+    if (color) {
+      canvas.style.background = color;
+      canvas.dataset.customBg = color;
+      document.getElementById('bgPicker').value = color;
+    } else {
+      canvas.style.background = '';
+      canvas.dataset.customBg = '';
+    }
+  }
+
+  document.getElementById('bgPicker').addEventListener('input', e => {
+    applyBg(e.target.value);
+  });
+
+  // double-click bg picker button → reset to default bg
+  document.getElementById('bgPickerBtn').addEventListener('dblclick', e => {
+    e.stopPropagation();
+    applyBg('');
+  });
+
+  // ── Delete Block ───────────────────────────────────────────────
+  const blockMenu = document.getElementById('blockMenu');
+  let menuTargetBlock = null;
+  let menuTargetConn  = null;
+
+  function deleteBlock(el) {
+    const id = el.id;
+    el.remove();
+    const cIdx = customBlocks.findIndex(bd => bd.id === id);
+    if (cIdx !== -1) {
+      customBlocks.splice(cIdx, 1);
+    } else {
+      if (!deletedBuiltins.includes(id)) deletedBuiltins.push(id);
+    }
+    customConns = customConns.filter(cd => cd.from !== id && cd.to !== id);
+    if (editingBlock === el) editingBlock = null;
+    if (menuTargetBlock === el) menuTargetBlock = null;
+    redrawLines();
+  }
+
+  canvas.addEventListener('contextmenu', e => {
+    const block = e.target.closest('.block');
+    if (!block) { blockMenu.classList.remove('show'); return; }
+    e.preventDefault();
+    menuTargetBlock = block;
+    menuTargetConn  = null;
+    document.getElementById('bmDeleteBlock').style.display = '';
+    document.getElementById('bmDeleteConn').style.display  = 'none';
+    const cr = canvas.getBoundingClientRect();
+    blockMenu.style.left = (e.clientX - cr.left + 4) + 'px';
+    blockMenu.style.top  = (e.clientY - cr.top  + 4) + 'px';
+    blockMenu.classList.add('show');
+  });
+
+  document.getElementById('bmDeleteBlock').addEventListener('click', () => {
+    if (menuTargetBlock) deleteBlock(menuTargetBlock);
+    menuTargetBlock = null;
+    blockMenu.classList.remove('show');
+  });
+
+  document.getElementById('bmDeleteConn').addEventListener('click', () => {
+    if (menuTargetConn) {
+      if (menuTargetConn.type === 'builtin') {
+        if (!deletedConns.includes(menuTargetConn.connId)) deletedConns.push(menuTargetConn.connId);
+        redrawLines();
+      } else {
+        const i = customConns.findIndex(cd => cd.from === menuTargetConn.from && cd.to === menuTargetConn.to);
+        if (i !== -1) { customConns.splice(i, 1); redrawLines(); }
+      }
+    }
+    menuTargetConn = null;
+    blockMenu.classList.remove('show');
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.block-menu')) {
+      blockMenu.classList.remove('show');
+      menuTargetBlock = null;
+      menuTargetConn  = null;
+    }
+  });
+
+  window.addEventListener('load', () => {
+    // inject resize handle into every block
+    document.querySelectorAll('.block').forEach(b => {
+      const h = document.createElement('div');
+      h.className = 'resize-handle';
+      b.appendChild(h);
+    });
+    loadLayout();
+    resetView();
+    drawLines();
+  });
+</script>
+</body>
+</html>
