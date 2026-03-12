@@ -433,16 +433,9 @@
       <div class="block-desc">
         Locks AERO via Aerodrome<br><b>VotingEscrow</b> (permanent lock).<br>
         Holds &amp; manages all <b>veAERO NFTs</b>.<br>
-        Exposes NFT list so user can <b>select specific tokenId</b> to withdraw.
-      </div>
-    </div>
-
-    <div class="block contract" id="autovoter" style="left:252px; top:348px;">
-      <div class="tag t-c">Contract</div>
-      <div class="block-name">AutoVoter</div>
-      <div class="block-desc">
-        Calls Aerodrome <b>Voter.vote()</b><br>each epoch.<br>
-        Only <b>VaultWallet</b> or owner<br>can trigger votes.
+        Exposes NFT list so user can <b>select specific tokenId</b> to withdraw.<br>
+        Calls Aerodrome <b>Voter.vote()</b> each epoch.<br>
+        Only <b>Owner</b> can trigger votes.
       </div>
     </div>
 
@@ -893,10 +886,9 @@
     const MO  = 'rgba(40,185,150,0.65)';
 
     const v  = q('vault'),    la = q('laero'),    vm = q('vemanager');
-    const av = q('autovoter'),rm = q('rewardmgr'),lv = q('lvault');
-    const sm = q('stakemgr'), vo = q('voteropt'), co = q('claimopt');
-    const ae = q('aerodrome'),u  = q('user'),     wv = q('vaultwallet');
-    const mo = q('morpho');
+    const rm = q('rewardmgr'),lv = q('lvault'),   sm = q('stakemgr');
+    const vo = q('voteropt'), co = q('claimopt'), ae = q('aerodrome');
+    const u  = q('user'),     wv = q('vaultwallet'), mo = q('morpho');
 
     // 1. User → LiquidAeroVault  (deposit AERO)
     conn(u.r, u.cy,  v.l, v.cy,  AC, null, 'c1');
@@ -907,23 +899,20 @@
     // 3. LiquidAeroVault → VeAeroManager  (send AERO to lock)
     vconn(v.cx, v.b,  vm.cx, vm.t,  C, null, 'c3');
 
-    // 4. VeAeroManager → AutoVoter  (provides veNFT for voting)
-    vconn(vm.cx, vm.b,  av.cx, av.t,  C, null, 'c4');
+    // 4. VeAeroManager → Aerodrome  (VotingEscrow — permanent lock)
+    conn(vm.r, vm.cy,  ae.l, ae.t + ae.h*0.22,  EX, null, 'c4');
 
-    // 5. VeAeroManager → Aerodrome  (VotingEscrow — permanent lock)
-    conn(vm.r, vm.cy,  ae.l, ae.t + ae.h*0.22,  EX, null, 'c5');
+    // 5. VeAeroManager ↔ VoterOptimizer  (strategy / voting config)
+    conn(vm.r, vm.cy + 16,  vo.l, vo.cy,  PY, null, 'c5');
 
-    // 6. AutoVoter ↔ VoterOptimizer  (strategy / voting config)
-    conn(av.r, av.cy,  vo.l, vo.cy,  PY, null, 'c6');
+    // 6. VeAeroManager → Aerodrome  (Voter.vote() each epoch)
+    conn(vm.r, vm.cy + 28,  ae.l, ae.cy,  EX, null, 'c6');
 
-    // 7. AutoVoter → Aerodrome  (Voter.vote() each epoch)
-    conn(av.r, av.cy + 10,  ae.l, ae.cy,  EX, null, 'c7');
+    // 7. VeAeroManager → RewardManager  (epoch flow: vote → then claim)
+    vconn(vm.cx, vm.b,  rm.cx, rm.t,  C, null, 'c7');
 
-    // 8. AutoVoter → RewardManager  (epoch flow: vote → then claim)
-    vconn(av.cx, av.b,  rm.cx, rm.t,  C, null, 'c8');
-
-    // 9. VaultWallet → AutoVoter  (signs vote transaction)
-    conn(wv.r, wv.cy,  av.l, av.cy,  WA, null, 'c9');
+    // 8. Owner → VeAeroManager  (signs vote transaction)
+    conn(wv.r, wv.cy,  vm.l, vm.cy,  WA, null, 'c8');
 
     // 10. VaultWallet → RewardManager  (signs claim transaction)
     // elbow: right of VaultWallet, bend around to left of RewardManager
