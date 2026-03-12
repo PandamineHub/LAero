@@ -465,7 +465,7 @@
 
     <div class="block contract" id="autocompound" style="left:462px; top:185px;">
       <div class="tag t-c">Contract</div>
-      <div class="block-name">AutoCompound</div>
+      <div class="block-name">AutoCompounder</div>
       <div class="block-desc">
         Optional vault for passive users.<br>
         User stakes <b>LAero</b> here instead<br>of the regular Staker.<br>
@@ -947,17 +947,17 @@
     // 18. ClaimOptimizer → Aerodrome  (reads reward data — faint)
     conn(co.r, co.cy,  ae.l, ae.b - 18,  RD, '3 6', 'c18');
 
-    // 21. User → AutoCompound  (stake LAero for auto-compounding)
+    // 21. User → AutoCompounder  (stake LAero for auto-compounding)
     mkpath(u.r, u.cy + 20,  ac.l, ac.cy,
            u.r + 30, u.cy + 20,  ac.l - 30, ac.cy,  AC, '4 5', 'c21');
 
-    // 22. AutoCompound → Staker  (stakes LAero to earn USDC rewards)
+    // 22. AutoCompounder → Staker  (stakes LAero to earn USDC rewards)
     vconn(ac.cx, ac.b,  sm.cx, sm.t,  C, null, 'c22');
 
-    // 23. AutoCompound → Aerodrome  (swap USDC → AERO via Router)
+    // 23. AutoCompounder → Aerodrome  (swap USDC → AERO via Router)
     conn(ac.r, ac.cy,  ae.l, ae.cy - 20,  EX, null, 'c23');
 
-    // 24. AutoCompound → VeAeroManager  (lock AERO → grow veAERO position)
+    // 24. AutoCompounder → VeAeroManager  (lock AERO → grow veAERO position)
     conn(ac.l, ac.cy,  vm.r, vm.cy + 20,  C, null, 'c24');
 
     // 19. RewardManager → Morpho Gauntlet USDC Prime  (deposit idle USDC for extra yield)
