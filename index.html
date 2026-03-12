@@ -463,6 +463,18 @@
       </div>
     </div>
 
+    <div class="block contract" id="autocompound" style="left:462px; top:185px;">
+      <div class="tag t-c">Contract</div>
+      <div class="block-name">AutoCompound</div>
+      <div class="block-desc">
+        Optional vault for passive users.<br>
+        User stakes <b>LAero</b> here instead<br>of the regular Staker.<br>
+        Claims <b>USDC</b> rewards from Staker.<br>
+        Swaps USDC → <b>AERO</b> via Aerodrome.<br>
+        Locks AERO → <b>veAERO</b> via VeAeroManager,<br>growing protocol voting power &amp; yield.
+      </div>
+    </div>
+
     <div class="block py-block" id="voteropt" style="left:462px; top:348px;">
       <div class="tag t-py">Python · VPS</div>
       <div class="block-name">VoterOptimizer</div>
@@ -877,7 +889,7 @@
     const MO  = 'rgba(40,185,150,0.65)';
 
     const v  = q('vault'),    la = q('laero'),    vm = q('vemanager');
-    const rm = q('rewardmgr'),sm = q('stakemgr');
+    const rm = q('rewardmgr'),sm = q('stakemgr'), ac = q('autocompound');
     const vo = q('voteropt'), co = q('claimopt'), ae = q('aerodrome');
     const u  = q('user'),     wv = q('vaultwallet'), mo = q('morpho');
 
@@ -934,6 +946,19 @@
 
     // 18. ClaimOptimizer → Aerodrome  (reads reward data — faint)
     conn(co.r, co.cy,  ae.l, ae.b - 18,  RD, '3 6', 'c18');
+
+    // 21. User → AutoCompound  (stake LAero for auto-compounding)
+    mkpath(u.r, u.cy + 20,  ac.l, ac.cy,
+           u.r + 30, u.cy + 20,  ac.l - 30, ac.cy,  AC, '4 5', 'c21');
+
+    // 22. AutoCompound → Staker  (stakes LAero to earn USDC rewards)
+    vconn(ac.cx, ac.b,  sm.cx, sm.t,  C, null, 'c22');
+
+    // 23. AutoCompound → Aerodrome  (swap USDC → AERO via Router)
+    conn(ac.r, ac.cy,  ae.l, ae.cy - 20,  EX, null, 'c23');
+
+    // 24. AutoCompound → VeAeroManager  (lock AERO → grow veAERO position)
+    conn(ac.l, ac.cy,  vm.r, vm.cy + 20,  C, null, 'c24');
 
     // 19. RewardManager → Morpho Gauntlet USDC Prime  (deposit idle USDC for extra yield)
     mkpath(rm.r, rm.cy,  mo.l, mo.cy,
